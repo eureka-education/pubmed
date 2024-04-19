@@ -2,7 +2,7 @@ from Bio import Entrez
 import streamlit as st
 
 # Entrezにメールアドレスを登録します（必須）
-Entrez.email = "senba03130@gmail.com"
+Entrez.email = "l2hhok8g40@sute.jp"
 
 # PubMedから論文を検索する関数
 def search_pubmed(query):
