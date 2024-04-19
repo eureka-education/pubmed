@@ -1,4 +1,6 @@
 from Bio import Entrez
+import requests
+from bs4 import BeautifulSoup
 import streamlit as st
 
 # Entrezにメールアドレスを登録します（必須）
@@ -19,13 +21,13 @@ def search_pubmed(query):
             
             # タイトルと要約を取得
             title = summary_record.get("Title", "タイトルがありません")
-            abstract = summary_record.get("Abstract", "要約がありません")
-            
             # 著者を取得
             authors = ', '.join(summary_record.get("AuthorList", []))
-            
             # DOIを取得
             doi = summary_record.get("DOI", "DOIがありません")
+
+            # 要約を取得するための関数を呼び出し
+            abstract = fetch_summary_from_doi(doi)
             
             article = {
                 "title": title,
@@ -38,6 +40,18 @@ def search_pubmed(query):
         return articles
     except Exception as e:
         st.error(f"エラーが発生しました: {e}")
+
+# 論文のDOIから要約を取得する関数
+def fetch_summary_from_doi(doi):
+    # DOI解決サービスを使用して論文の情報を取得
+    crossref_api_url = f"https://api.crossref.org/works/{doi}"
+    response = requests.get(crossref_api_url)
+    if response.status_code == 200:
+        data = response.json()
+        if 'abstract' in data['message']:
+            abstract = data['message']['abstract']
+            return abstract
+    return "要約がありません"
 
 # Streamlitアプリのタイトルを設定
 st.title("Pubmed論文検索")
@@ -61,4 +75,3 @@ if st.button("検索"):
             st.write(f"DOI: {article['doi']}")
     else:
         st.warning("検索結果が見つかりませんでした。別のクエリをお試しください。")
-
