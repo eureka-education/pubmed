@@ -1,3 +1,4 @@
+# 必要なライブラリのインポート
 from Bio import Entrez
 import requests
 from bs4 import BeautifulSoup
@@ -16,7 +17,7 @@ def fetch_summary_from_pubmed(doi):
             # BeautifulSoupを使用してHTMLを解析
             soup = BeautifulSoup(response.content, "html.parser")
             # 要約を含む<div>要素を特定
-            abstract_div = soup.find("div", class_="abstract")
+            abstract_div = soup.find("div", class_="abstract-content")
             # 要約のテキストを抽出
             if abstract_div:
                 abstract_text = abstract_div.text.strip()
@@ -26,10 +27,10 @@ def fetch_summary_from_pubmed(doi):
         return f"エラーが発生しました: {e}"
 
 # PubMedから論文を検索し、論文の情報と要約を取得する関数
-def search_and_fetch_pubmed_articles(query):
+def search_and_fetch_pubmed_articles(query, max_results=5):
     try:
-        # 検索クエリを使用してPubMedから論文を検索
-        handle = Entrez.esearch(db="pubmed", term=query)
+        # 検索クエリを使用してPubMedから論文を検索（最新順に最大5件）
+        handle = Entrez.esearch(db="pubmed", term=query, sort="most recent", retmax=max_results)
         record = Entrez.read(handle)
         id_list = record["IdList"]
         
@@ -63,15 +64,15 @@ def search_and_fetch_pubmed_articles(query):
         return []
 
 # Streamlitアプリのタイトルを設定
-st.title("Pubmed論文検索")
+st.title("PubMed論文検索")
 
 # 検索クエリを入力するテキストボックスを表示
 query = st.text_input("検索クエリを入力してください")
 
-# 検索ボタンがクリックされたら、PubmedAPIを使用して論文を検索し、要約を取得して表示
+# 検索ボタンがクリックされたら、PubMed APIを使用して論文を検索し、要約を取得して表示
 if st.button("検索"):
     if query:
-        articles = search_and_fetch_pubmed_articles(query)
+        articles = search_and_fetch_pubmed_articles(query, max_results=5)
         if articles:
             st.write(f"検索結果: {len(articles)} 件")
             for article in articles:
@@ -84,3 +85,5 @@ if st.button("検索"):
             st.warning("検索結果が見つかりませんでした。別のクエリをお試しください。")
     else:
         st.warning("検索クエリを入力してください。")
+
+
