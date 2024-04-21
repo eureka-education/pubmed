@@ -1,17 +1,42 @@
-from Bio import Entrez
+import os
 import requests
 from bs4 import BeautifulSoup
 import streamlit as st
-from functools import lru_cache
+from Bio import Entrez
 from concurrent.futures import ThreadPoolExecutor
+import re
 
-Entrez.email = "your_email@example.com"
+# DeepL APIキーとEntrezメールアドレスはシークレットから取得
+DEEPL_API_KEY = st.secrets["DEEPL_API_KEY"]
+ENTREZ_EMAIL = st.secrets["ENTREZ_EMAIL"]
 
-# DOIによる要約取得関数をキャッシュ
-@lru_cache(maxsize=100)  # キャッシュサイズの指定
-def fetch_summary_from_pubmed(doi):
+# Entrezでのリクエスト用メールアドレスを設定
+Entrez.email = ENTREZ_EMAIL
+
+# DeepL APIを使ってテキストを翻訳する関数
+def translate_to_japanese(text):
     try:
-        pubmed_url = f"https://pubmed.ncbi.nlm.nih.gov/?term={doi}"
+        url = "https://api-free.deepl.com/v2/translate"
+        payload = {
+            "auth_key": DEEPL_API_KEY,
+            "text": text,
+            "target_lang": "JA"
+        }
+        response = requests.post(url, data=payload)
+
+        if response.status_code == 200:
+            translated_data = response.json()
+            translated_text = translated_data["translations"][0]["text"]
+            return translated_text
+        else:
+            return f"翻訳に失敗しました。ステータスコード: {response.status_code}, メッセージ: {response.text}"
+    except Exception as e:
+        return f"DeepL翻訳でエラーが発生しました: {e}"
+
+# PubMedから要約を抽出する関数
+def fetch_abstract_from_pubmed(pubmed_id):
+    try:
+        pubmed_url = f"https://pubmed.ncbi.nlm.nih.gov/{pubmed_id}/"
         response = requests.get(pubmed_url)
         if response.status_code == 200:
             soup = BeautifulSoup(response.content, "html.parser")
@@ -21,65 +46,70 @@ def fetch_summary_from_pubmed(doi):
                 return abstract_text
         return "要約がありません"
     except Exception as e:
-        return f"エラーが発生しました: {e}"
+        return f"要約取得でエラーが発生しました: {e}"
 
+# PubMedで論文を検索して情報を取得する関数
 def search_and_fetch_pubmed_articles(query, max_results=5):
     try:
+        # PubMedで論文を検索
         handle = Entrez.esearch(db="pubmed", term=query, sort="most recent", retmax=max_results)
         record = Entrez.read(handle)
         id_list = record["IdList"]
 
-        # 並列処理を導入
+        articles = []
         with ThreadPoolExecutor(max_workers=max_results) as executor:
-            articles = []
             futures = []
             for pubmed_id in id_list:
+                # 論文の概要情報を取得
                 summary_handle = Entrez.esummary(db="pubmed", id=pubmed_id)
                 summary_record = Entrez.read(summary_handle)[0]
-                
+
                 title = summary_record.get("Title", "タイトルがありません")
-                doi = summary_record.get("DOI", "DOIがありません")
-                authors = ', '.join(summary_record.get("AuthorList", []))
-                
-                # 並列で要約取得を実行
-                future = executor.submit(fetch_summary_from_pubmed, doi)
-                futures.append((future, title, authors, doi))
+                authors = ', '.join(summary_record.get("AuthorList", ["著者がありません"]))
+
+                # 要約を取得して翻訳
+                future = executor.submit(fetch_abstract_from_pubmed, pubmed_id)
+                futures.append((future, title, authors, pubmed_id))
             
-            # 取得結果を順に処理
-            for future, title, authors, doi in futures:
-                abstract = future.result()  # 要約取得結果
+            for future, title, authors, pubmed_id in futures:
+                abstract = future.result()  # 原文の要約
+                translated_abstract = translate_to_japanese(abstract)  # 翻訳された要約
+
+                # 論文情報を作成
                 article = {
                     "title": title,
                     "authors": authors,
-                    "abstract": abstract,
-                    "doi": doi
+                    "abstract": translated_abstract,
+                    "pubmed_id": pubmed_id
                 }
                 articles.append(article)
         
         return articles
     except Exception as e:
-        return []
+        return f"PubMed検索でエラーが発生しました: {e}"
 
-# Streamlit UIの部分は変わりません
-# Streamlitアプリのタイトルを設定
+# Streamlitアプリケーション
 st.title("PubMed論文検索")
 
-# 検索クエリを入力するテキストボックスを表示
+# クエリのバリデーション
+def is_valid_query(query):
+    # アルファベット、数字、スペース、ハイフン、アンダースコアのみ許可
+    return re.match(r'^[\w -]+$', query) is not None
+
 query = st.text_input("検索クエリを入力してください")
 
-# 検索ボタンがクリックされたら、PubMed APIを使用して論文を検索し、要約を取得して表示
 if st.button("検索"):
-    if query:
+    if is_valid_query(query):
         articles = search_and_fetch_pubmed_articles(query, max_results=5)
-        if articles:
+        if isinstance(articles, list):
             st.write(f"検索結果: {len(articles)} 件")
             for article in articles:
                 st.write("-------")
                 st.write(f"タイトル: {article['title']}")
                 st.write(f"著者: {article['authors']}")
                 st.write(f"要約: {article['abstract']}")
-                st.write(f"DOI: {article['doi']}")
+                st.write(f"PubMed ID: {article['pubmed_id']}")
         else:
-            st.warning("検索結果が見つかりませんでした。別のクエリをお試しください。")
+            st.error(articles)  # エラーメッセージを表示
     else:
-        st.warning("検索クエリを入力してください。")
+        st.warning("無効なクエリが入力されました。許可されている文字のみを使用してください。")
