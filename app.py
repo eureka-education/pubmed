@@ -1,4 +1,3 @@
-# 必要なライブラリのインポート
 from Bio import Entrez
 import requests
 from bs4 import BeautifulSoup
@@ -18,9 +17,9 @@ def fetch_summary_from_pubmed(doi):
             soup = BeautifulSoup(response.content, "html.parser")
             # 要約を含む<div>要素を特定
             abstract_div = soup.find("div", class_="abstract-content")
-            # 要約のテキストを抽出
             if abstract_div:
-                abstract_text = abstract_div.text.strip()
+                # HTMLタグを取り除き、テキストとして抽出
+                abstract_text = ' '.join(abstract_div.stripped_strings)
                 return abstract_text
         return "要約がありません"
     except Exception as e:
@@ -85,5 +84,6 @@ if st.button("検索"):
             st.warning("検索結果が見つかりませんでした。別のクエリをお試しください。")
     else:
         st.warning("検索クエリを入力してください。")
+
 
 
