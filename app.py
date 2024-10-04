@@ -60,7 +60,6 @@ def search_and_fetch_pubmed_articles(query, max_results=5):
     except Exception as e:
         return []
 
-# Streamlit UIの部分は変わりません
 # Streamlitアプリのタイトルを設定
 st.title("PubMed論文検索")
 
